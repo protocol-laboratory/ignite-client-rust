@@ -4,17 +4,6 @@ use std::any::Any;
 use std::io::{Error, ErrorKind};
 use tokio::io;
 
-pub trait Encode {
-    fn encode(&self) -> BytesMut;
-    fn length(&self) -> usize;
-}
-
-pub trait Decode {
-    fn decode(data: &[u8]) -> io::Result<Self>
-    where
-        Self: Sized;
-}
-
 pub struct HandshakeRequest {
     pub major_version: i16,
     pub minor_version: i16,
@@ -39,10 +28,8 @@ impl HandshakeRequest {
             password,
         }
     }
-}
 
-impl Encode for HandshakeRequest {
-    fn encode(&self) -> BytesMut {
+    pub(crate) fn encode(&self) -> BytesMut {
         let payload_length = self.length();
         let mut buf = BytesMut::with_capacity(payload_length + 4);
         buf.put_i32_le(payload_length as i32);
@@ -73,8 +60,8 @@ pub enum HandshakeResponse {
     },
 }
 
-impl Decode for HandshakeResponse {
-    fn decode(data: &[u8]) -> io::Result<Self> {
+impl HandshakeResponse {
+    pub(crate) fn decode(data: &[u8]) -> io::Result<Self> {
         if data.is_empty() {
             return Err(Error::new(ErrorKind::Other, "Empty response"));
         }
@@ -132,8 +119,8 @@ impl Request {
     }
 }
 
-impl Encode for Request {
-    fn encode(&self) -> BytesMut {
+impl Request {
+    pub(crate) fn encode(&self) -> BytesMut {
         let payload_length = self.length();
         let mut buf = BytesMut::with_capacity(payload_length + 4);
         buf.put_i32_le(payload_length as i32);
@@ -153,11 +140,11 @@ impl Encode for Request {
     fn length(&self) -> usize {
         2 + 8
             + match &self.body {
-                RequestType::QuerySql(query_sql_request) => query_sql_request.length(),
-                RequestType::QuerySqlFields(query_sql_fields_request) => {
-                    query_sql_fields_request.length()
-                }
+            RequestType::QuerySql(query_sql_request) => query_sql_request.length(),
+            RequestType::QuerySqlFields(query_sql_fields_request) => {
+                query_sql_fields_request.length()
             }
+        }
     }
 }
 
@@ -174,7 +161,7 @@ pub enum ResponseType {
 }
 
 impl Response {
-    pub fn decode_query_sql(data: &[u8]) -> io::Result<Self> {
+    pub(crate) fn decode_query_sql(data: &[u8]) -> io::Result<Self> {
         if data.is_empty() {
             return Err(Error::new(ErrorKind::Other, "Empty response"));
         }
@@ -210,7 +197,7 @@ impl Response {
         }
     }
 
-    pub fn decode_query_sql_fields(data: &[u8]) -> io::Result<Self> {
+    pub(crate) fn decode_query_sql_fields(data: &[u8], includes_field_names: bool) -> io::Result<Self> {
         if data.is_empty() {
             return Err(Error::new(ErrorKind::Other, "Empty response"));
         }
@@ -238,7 +225,7 @@ impl Response {
                 }),
             })
         } else {
-            let query_sql_fields_response = QuerySqlFieldsResponse::decode(&data[12..], true)?;
+            let query_sql_fields_response = QuerySqlFieldsResponse::decode(&data[12..], includes_field_names)?;
             Ok(Response {
                 request_id,
                 status_code,
@@ -290,8 +277,8 @@ impl QuerySqlRequest {
     }
 }
 
-impl Encode for QuerySqlRequest {
-    fn encode(&self) -> BytesMut {
+impl QuerySqlRequest {
+    pub(crate) fn encode(&self) -> BytesMut {
         let payload_length = self.length();
         let mut buf = BytesMut::with_capacity(payload_length);
         buf.put_i32_le(self.cache_id);
@@ -334,8 +321,8 @@ pub struct QuerySqlResponse {
     pub has_more: bool,
 }
 
-impl Decode for QuerySqlResponse {
-    fn decode(data: &[u8]) -> io::Result<Self> {
+impl QuerySqlResponse {
+    pub(crate) fn decode(data: &[u8]) -> io::Result<Self> {
         if data.is_empty() {
             return Err(Error::new(ErrorKind::Other, "Empty response"));
         }
@@ -420,8 +407,8 @@ impl QuerySqlFieldsRequest {
     }
 }
 
-impl Encode for QuerySqlFieldsRequest {
-    fn encode(&self) -> BytesMut {
+impl QuerySqlFieldsRequest {
+    pub(crate) fn encode(&self) -> BytesMut {
         let payload_length = self.length();
         let mut buf = BytesMut::with_capacity(payload_length);
         buf.put_i32_le(self.cache_id);
@@ -479,7 +466,7 @@ pub struct QuerySqlFieldsResponse {
 }
 
 impl QuerySqlFieldsResponse {
-    fn decode(data: &[u8], has_field_names: bool) -> io::Result<Self> {
+    pub(crate) fn decode(data: &[u8], has_field_names: bool) -> io::Result<Self> {
         if data.is_empty() {
             return Err(Error::new(ErrorKind::Other, "Empty response"));
         }
@@ -503,7 +490,7 @@ impl QuerySqlFieldsResponse {
                 let column_name = String::from_utf8(
                     data[offset..(offset + column_name_length as usize)].to_vec(),
                 )
-                .map_err(|e| Error::new(ErrorKind::InvalidData, format!("{}", e)))?;
+                    .map_err(|e| Error::new(ErrorKind::InvalidData, format!("{}", e)))?;
                 column_names.push(column_name);
                 offset += column_name_length as usize;
             }
