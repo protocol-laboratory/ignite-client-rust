@@ -5,7 +5,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use crate::protocol::{
-    Decode, Encode, HandshakeRequest, HandshakeResponse, QuerySqlFieldsRequest,
+    HandshakeRequest, HandshakeResponse, QuerySqlFieldsRequest,
     QuerySqlFieldsResponse, QuerySqlRequest, QuerySqlResponse, Request, Response, ResponseType,
 };
 
@@ -106,7 +106,7 @@ impl IgniteClient {
             let mut msg_buf = vec![0u8; msg_length];
             stream.read_exact(&mut msg_buf).await?;
 
-            let response = Response::decode_query_sql_fields(&msg_buf)?;
+            let response = Response::decode_query_sql_fields(&msg_buf, true)?;
             if response.status_code != 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
@@ -125,7 +125,7 @@ impl IgniteClient {
         }
     }
 
-    pub async fn disconnect(&mut self) -> Result<(), io::Error> {
+    pub async fn close(&mut self) -> Result<(), io::Error> {
         if let Some(mut stream) = self.stream.take() {
             stream.shutdown().await?;
         }
@@ -148,7 +148,7 @@ mod tests {
 
         assert!(matches!(response, HandshakeResponse::Success));
 
-        client.disconnect().await?;
+        client.close().await?;
         Ok(())
     }
 
@@ -162,7 +162,7 @@ mod tests {
 
         assert!(matches!(response, HandshakeResponse::Failure { .. }));
 
-        client.disconnect().await?;
+        client.close().await?;
         Ok(())
     }
 
@@ -185,7 +185,7 @@ mod tests {
             "PUBLIC".to_string(),
             1024,
             65535,
-            "SELECT * FROM SYS.TABLES".to_string(),
+            "SELECT * FROM SYS.SCHEMAS".to_string(),
             0,
             Vec::new(),
             StatementType::SELECT,
@@ -202,7 +202,7 @@ mod tests {
 
         assert!(response.column_names.len() > 0);
 
-        client.disconnect().await?;
+        client.close().await?;
         Ok(())
     }
 }
